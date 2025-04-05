@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IA no Labirinto com Q-Learning</title>
+  <style>
+    canvas { border: 1px solid #000; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="300" height="300"></canvas>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const cols = 6;
+    const rows = 6;
+    const cellSize = canvas.width / cols;
+
+    const start = [0, 0];
+    const goal = [5, 5];
+
+    const obstacles = [
+      [1, 0], [1,1], [1,2],
+      [3,3], [4,3], [5,3],
+      [2,5], [3,5]
+    ];
+
+    const nActions = 4; // cima, baixo, esquerda, direita
+
+    // Ações como vetores [dx, dy]
+    const actions = [
+      [0, -1], // cima
+      [0, 1],  // baixo
+      [-1, 0], // esquerda
+      [1, 0],  // direita
+    ];
+
+    const qTable = {};
+    function initQTable() {
+      for (let x = 0; x < cols; x++) {
+        for (let y = 0; y < rows; y++) {
+          qTable[`${x},${y}`] = [0, 0, 0, 0];
+        }
+      }
+    }
+
+    function isObstacle(x, y) {
+      return obstacles.some(([ox, oy]) => ox === x && oy === y);
+    }
+
+    function mover([x, y], actionIdx) {
+      const [dx, dy] = actions[actionIdx];
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) return [x, y]; // fora do mapa
+      if (isObstacle(nx, ny)) return [x, y]; // parede
+      return [nx, ny];
+    }
+
+    function escolherAcao(state, epsilon) {
+      if (Math.random() < epsilon) {
+        return Math.floor(Math.random() * nActions);
+      }
+      const [x, y] = state;
+      return qTable[`${x},${y}`].indexOf(Math.max(...qTable[`${x},${y}`]));
+    }
+
+    function desenharLabirinto(agentPos) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Grid
+      ctx.strokeStyle = "#ccc";
+      for (let x = 0; x <= cols; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cellSize, 0);
+        ctx.lineTo(x * cellSize, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= rows; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * cellSize);
+        ctx.lineTo(canvas.width, y * cellSize);
+        ctx.stroke();
+      }
+
+      // Obstáculos
+      ctx.fillStyle = "gray";
+      for (let [x, y] of obstacles) {
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      }
+
+      // Objetivo
+      ctx.fillStyle = "green";
+      ctx.fillRect(goal[0] * cellSize, goal[1] * cellSize, cellSize, cellSize);
+
+      // Agente
+      if (agentPos) {
+        ctx.fillStyle = "blue";
+        ctx.fillRect(agentPos[0] * cellSize, agentPos[1] * cellSize, cellSize, cellSize);
+      }
+    }
+
+    // 🧠 Treinamento
+    function treinar(episodios = 50) {
+      const alpha = 0.1;
+      const gamma = 0.9;
+      const epsilon = 0.2;
+
+      for (let ep = 0; ep < episodios; ep++) {
+        let state = [...start];
+        for (let step = 0; step < 100; step++) {
+          const action = escolherAcao(state, epsilon);
+          const nextState = mover(state, action);
+          const isGoal = nextState[0] === goal[0] && nextState[1] === goal[1];
+          const reward = isGoal ? 100 : -1;
+
+          const currentQ = qTable[`${state[0]},${state[1]}`][action];
+          const maxNextQ = Math.max(...qTable[`${nextState[0]},${nextState[1]}`]);
+
+          qTable[`${state[0]},${state[1]}`][action] =
+            currentQ + alpha * (reward + gamma * maxNextQ - currentQ);
+
+          state = nextState;
+          if (isGoal) break;
+        }
+      }
+    }
+
+    // 🧠 Executar IA treinada
+    function jogarComIA() {
+      let state = [...start];
+      let path = [state];
+      desenharLabirinto(state);
+
+      let interval = setInterval(() => {
+        const action = escolherAcao(state, 0); // epsilon = 0 → só ação ótima
+        const next = mover(state, action);
+        path.push(next);
+        state = next;
+
+        desenharLabirinto(state);
+
+        if (state[0] === goal[0] && state[1] === goal[1]) {
+          clearInterval(interval);
+          console.log("🏁 Finalizado! Caminho:", path);
+        }
+      }, 200);
+    }
+
+    // 👟 Inicializar tudo
+    initQTable();
+    treinar();
+    jogarComIA();
+
+  </script>
+</body>
+</html>

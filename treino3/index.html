@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IA no Labirinto com Q-Learning</title>
+  <style>
+    canvas { border: 1px solid #000; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    
+    canvas.height = 300
+    canvas.width = 300
+
+    const cols = 6;
+    const rows = 6;
+    const cellSize = canvas.width / cols;
+
+    const start = [0, 0];
+    const goal = [5, 5];
+
+    const nActions = 4; // cima, baixo, esquerda, direita
+
+    // Ações como vetores [dx, dy]
+    const actions = [
+      [0, -1], // cima
+      [0, 1],  // baixo
+      [-1, 0], // esquerda
+      [1, 0],  // direita
+    ];
+    
+    const qTable = {}
+    
+    //zera qTable
+    for(let i = 0; i < rows;i++){
+    	for(let j = 0; j < cols; j++){
+        	qTable[`${i},${j}`] = [0,0,0,0]
+        }
+	}
+
+    
+    const player = {
+    	x: 0,
+        y: 0,
+        color: "blue"
+    }
+
+    function move(dx,dy,actionIndex){
+    	const newX = (player.x + dx)
+        const newY = (player.y + dy)
+        if(newX < 0 || newY < 0 || newX >= cols || newY >= rows) return
+        if(newX == goal[0] && newY == goal[1]){
+        	player.x = goal[0]
+            player.y = goal[1]
+            qTable[`${player.x},${player.y}`][actionIndex] += 1
+            return
+        }
+        player.x = newX
+        player.y = newY
+        qTable[`${player.x},${player.y}`][actionIndex] += 1
+    }
+
+    function drawGrid(){
+        //cria grid
+        for(let j = 0; j < canvas.height; j+=cellSize){
+        ctx.moveTo(j,0)
+        ctx.lineTo(j,canvas.height)
+        }
+        
+        for(let i = 0; i < canvas.width; i+=cellSize){
+        ctx.moveTo(0,i)
+        ctx.lineTo(canvas.width, i)
+        }
+        
+        ctx.strokeStyle = 'black';
+        ctx.stroke();
+
+    }
+
+    function chooseAction(x, y, episolon){
+        if(Math.random() < episolon){
+        	return Math.floor(Math.random() * nActions)
+        }else{
+            return qTable[`${x},${y}`].indexOf(Math.max(...qTable[`${x},${y}`]))
+        }             
+    }
+
+    function playIA(){
+        if(player.x == goal[0] && player.y == goal[1]) return
+        const actionIndex = chooseAction(player.x, player.y, 0.1)
+        const [dx, dy] = actions[actionIndex]
+        move(dx,dy,actionIndex)
+    }
+
+    function trainIA(episodes = 1000, maxSteps = 100) {
+        const alpha = 0.1;   // taxa de aprendizado
+        const gamma = 0.9;   // fator de desconto
+        const epsilon = 0.1; // chance de explorar
+
+        for (let episode = 0; episode < episodes; episode++) {
+            let x = start[0];
+            let y = start[1];
+
+            for (let step = 0; step < maxSteps; step++) {
+            const stateKey = `${x},${y}`;
+
+            let actionIndex;
+            if (Math.random() < epsilon) {
+                actionIndex = Math.floor(Math.random() * nActions); // explora
+            } else {
+                actionIndex = qTable[stateKey].indexOf(Math.max(...qTable[stateKey])); // melhor ação
+            }
+
+            const [dx, dy] = actions[actionIndex];
+            const nextX = Math.max(0, Math.min(cols - 1, x + dx));
+            const nextY = Math.max(0, Math.min(rows - 1, y + dy));
+            const nextStateKey = `${nextX},${nextY}`;
+
+            const reward = (nextX === goal[0] && nextY === goal[1]) ? 100 : -1;
+
+            const currentQ = qTable[stateKey][actionIndex];
+            const maxNextQ = Math.max(...qTable[nextStateKey]);
+
+            // Q-learning update
+            qTable[stateKey][actionIndex] =
+                currentQ + alpha * (reward + gamma * maxNextQ - currentQ);
+
+            x = nextX;
+            y = nextY;
+
+            if (x === goal[0] && y === goal[1]) break;
+            }
+        }
+    }
+
+    
+    function drawPlayer(){
+    	ctx.fillStyle = player.color;
+    	ctx.fillRect(player.x*cellSize, player.y*cellSize,cellSize,cellSize)
+    }
+    
+    function drawGoal(){
+    	ctx.fillStyle = "green";
+    	ctx.fillRect(goal[0]*cellSize,goal[1]*cellSize,cellSize,cellSize)
+    }
+    
+    function update(){
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        drawPlayer()
+        drawGrid()
+    	drawGoal()
+        playIA()
+        setTimeout(update, 300);
+    }
+    trainIA(1000)
+    update()
+  </script>
+</body>
+</html>
