@@ -21,7 +21,12 @@
     const cellSize = canvas.width / cols;
 
     const start = [0, 0];
-    const goal = [5, 5];
+    const goal = [5, 0];
+    const blocks = [
+      [2, 4], [1, 2], [1, 3],
+      [2, 3], [3, 3], [4, 3],
+      [4, 2], [4, 1], [4, 0], [4,5]
+    ];
 
     const nActions = 4; // cima, baixo, esquerda, direita
 
@@ -49,20 +54,7 @@
         color: "blue"
     }
 
-    function move(dx,dy,actionIndex){
-    	const newX = (player.x + dx)
-        const newY = (player.y + dy)
-        if(newX < 0 || newY < 0 || newX >= cols || newY >= rows) return
-        if(newX == goal[0] && newY == goal[1]){
-        	player.x = goal[0]
-            player.y = goal[1]
-            qTable[`${player.x},${player.y}`][actionIndex] += 1
-            return
-        }
-        player.x = newX
-        player.y = newY
-        qTable[`${player.x},${player.y}`][actionIndex] += 1
-    }
+
 
     function drawGrid(){
         //cria grid
@@ -81,6 +73,35 @@
 
     }
 
+    function move(dx,dy,actionIndex){
+    	const newX = (player.x + dx)
+        const newY = (player.y + dy)
+
+        if(newX < 0 || newY < 0 || newX >= cols || newY >= rows){
+            qTable[`${player.x},${player.y}`][actionIndex] = -1
+            return               
+        }
+
+        const isBlocked = blocks.some(block => block[0] === newX && block[1] === newY);
+        if (isBlocked) {
+            qTable[`${player.x},${player.y}`][actionIndex] = -1;
+            return;
+        }
+
+        if(newX == goal[0] && newY == goal[1]){
+        	player.x = goal[0]
+            player.y = goal[1]
+            qTable[`${player.x},${player.y}`][actionIndex] += 1
+            player.x = 0
+            player.y = 0
+            return
+        }
+
+        player.x = newX
+        player.y = newY
+        qTable[`${player.x},${player.y}`][actionIndex] += 1
+    }
+
     function chooseAction(x, y, episolon){
         if(Math.random() < episolon){
         	return Math.floor(Math.random() * nActions)
@@ -96,43 +117,54 @@
         move(dx,dy,actionIndex)
     }
 
-    function trainIA(episodes = 1000, maxSteps = 100) {
+    function trainIA(episodes = 1000, maxSteps = 1000) {
         const alpha = 0.1;   // taxa de aprendizado
         const gamma = 0.9;   // fator de desconto
-        const epsilon = 0.1; // chance de explorar
+        const epsilon = 1.0; // chance de explorar
 
         for (let episode = 0; episode < episodes; episode++) {
             let x = start[0];
             let y = start[1];
 
             for (let step = 0; step < maxSteps; step++) {
-            const stateKey = `${x},${y}`;
+                const stateKey = `${x},${y}`;
 
-            let actionIndex;
-            if (Math.random() < epsilon) {
-                actionIndex = Math.floor(Math.random() * nActions); // explora
-            } else {
-                actionIndex = qTable[stateKey].indexOf(Math.max(...qTable[stateKey])); // melhor ação
-            }
+                let actionIndex;
+                if (Math.random() < epsilon) {
+                    actionIndex = Math.floor(Math.random() * nActions); // explora
+                } else {
+                    actionIndex = qTable[stateKey].indexOf(Math.max(...qTable[stateKey])); // melhor ação
+                }
 
-            const [dx, dy] = actions[actionIndex];
-            const nextX = Math.max(0, Math.min(cols - 1, x + dx));
-            const nextY = Math.max(0, Math.min(rows - 1, y + dy));
-            const nextStateKey = `${nextX},${nextY}`;
+                const [dx, dy] = actions[actionIndex];
+                const nextX = Math.max(0, Math.min(cols - 1, x + dx));
+                const nextY = Math.max(0, Math.min(rows - 1, y + dy));
+                const nextStateKey = `${nextX},${nextY}`;
+                const isBlocked = blocks.some(block => block[0] === nextX && block[1] === nextY);
+                
 
-            const reward = (nextX === goal[0] && nextY === goal[1]) ? 100 : -1;
+                let reward = 0;
+                if (nextX === goal[0] && nextY === goal[1]){
+                    reward = 100
+                }else{
+                    reward = -1;
+                }
 
-            const currentQ = qTable[stateKey][actionIndex];
-            const maxNextQ = Math.max(...qTable[nextStateKey]);
+                if (isBlocked) {
+                    reward = -100
+                }
 
-            // Q-learning update
-            qTable[stateKey][actionIndex] =
-                currentQ + alpha * (reward + gamma * maxNextQ - currentQ);
+                const currentQ = qTable[stateKey][actionIndex];
+                const maxNextQ = Math.max(...qTable[nextStateKey]);
 
-            x = nextX;
-            y = nextY;
+                // Q-learning update
+                qTable[stateKey][actionIndex] =
+                    currentQ + alpha * (reward + gamma * maxNextQ - currentQ);
 
-            if (x === goal[0] && y === goal[1]) break;
+                x = nextX;
+                y = nextY;
+
+                if (x === goal[0] && y === goal[1]) break;
             }
         }
     }
@@ -147,12 +179,20 @@
     	ctx.fillStyle = "green";
     	ctx.fillRect(goal[0]*cellSize,goal[1]*cellSize,cellSize,cellSize)
     }
+
+    function drawBlocks(){
+    	ctx.fillStyle = "red";
+        for(let i = 0; i < blocks.length; i++){
+        	ctx.fillRect(blocks[i][0]*cellSize,blocks[i][1]*cellSize,cellSize,cellSize)
+        }
+    }
     
     function update(){
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         drawPlayer()
         drawGrid()
     	drawGoal()
+        drawBlocks()
         playIA()
         setTimeout(update, 300);
     }
