@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DQN Visual</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+</head>
+<body>
+<canvas id="canvas" width="250" height="250" style="border:1px solid #000"></canvas>
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const size = 5;
+const cellSize = canvas.width / size;
+const goal = [4, 4];
+let state = [0, 0];
+const actions = [[0,-1],[0,1],[-1,0],[1,0]]; // cima, baixo, esq, dir
+let path = []; // Para desenhar o caminho
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // grid
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      ctx.strokeStyle = "#999";
+      ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+    }
+  }
+
+  // rastro do caminho
+  ctx.fillStyle = "rgba(0,0,255,0.3)";
+  for (const [x, y] of path) {
+    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+  }
+
+  // objetivo
+  ctx.fillStyle = "green";
+  ctx.fillRect(goal[0]*cellSize, goal[1]*cellSize, cellSize, cellSize);
+
+  // agente
+  ctx.fillStyle = "blue";
+  ctx.fillRect(state[0]*cellSize, state[1]*cellSize, cellSize, cellSize);
+}
+
+function getStateTensor(state) {
+  return tf.tensor2d([[state[0] / (size-1), state[1] / (size-1)]]);
+}
+
+// modelo DQN
+const model = tf.sequential();
+model.add(tf.layers.dense({units: 16, inputShape: [2], activation: 'relu'}));
+model.add(tf.layers.dense({units: 4}));
+const optimizer = tf.train.adam(0.01);
+model.compile({optimizer: optimizer, loss: 'meanSquaredError'});
+
+async function train(episodes = 300) {
+  for (let ep = 0; ep < episodes; ep++) {
+    console.log(ep)
+    let s = [0, 0];
+    path = [s]; // reseta caminho por episódio
+    for (let step = 0; step < 50; step++) {
+      const st = getStateTensor(s);
+      let actionIdx;
+      if (Math.random() < 0.2) {
+        actionIdx = Math.floor(Math.random()*4); // explora
+      } else {
+        const qVals = await model.predict(st).data();
+        actionIdx = qVals.indexOf(Math.max(...qVals));
+      }
+
+      const [dx, dy] = actions[actionIdx];
+      let nx = Math.max(0, Math.min(size - 1, s[0] + dx));
+      let ny = Math.max(0, Math.min(size - 1, s[1] + dy));
+      const done = (nx === goal[0] && ny === goal[1]);
+      
+      // Distância Euclidiana normalizada
+      const dist = Math.sqrt((goal[0] - nx) ** 2 + (goal[1] - ny) ** 2) / Math.sqrt(2 * (size - 1) ** 2);
+
+      // Recompensa inversa da distância
+      const reward = done ? 1 : (1 - dist) * 0.5 - 0.01;
+
+
+      const nextSt = getStateTensor([nx, ny]);
+      const target = await model.predict(st).data();
+      const nextQ = await model.predict(nextSt).data();
+      target[actionIdx] = reward + 0.9 * Math.max(...nextQ);
+
+      const label = tf.tensor2d([target]);
+      await model.fit(st, label, {epochs: 1, verbose: 0});
+
+      s = [nx, ny];
+      path.push(s);
+      state = s;
+      draw();
+      await new Promise(r => setTimeout(r, 50));
+
+      tf.dispose([st, nextSt, label]);
+      if (done) break;
+    }
+  }
+
+  console.log("🏁 Treinamento concluído! Executando agente...");
+  run();
+}
+
+// executa após treino
+async function run(){
+  console.log("Executando agente...");
+  let s = [0, 0];
+  path = [s];
+  function step(){
+    state = s;
+    path.push(s);
+    draw();
+    getStateTensor(s).array().then(async input => {
+      const prediction = await model.predict(tf.tensor2d(input)).data();
+      const idx = prediction.indexOf(Math.max(...prediction));
+      const [dx, dy] = actions[idx];
+      let nx = Math.max(0, Math.min(size - 1, s[0] + dx));
+      let ny = Math.max(0, Math.min(size - 1, s[1] + dy));
+      s = [nx, ny];
+      if (nx === goal[0] && ny === goal[1]) {
+        draw();
+        return;
+      }
+      setTimeout(step, 1);
+    });
+  }
+  step();
+}
+
+draw(); // desenha estado inicial
+train();
+</script>
+</body>
+</html>
